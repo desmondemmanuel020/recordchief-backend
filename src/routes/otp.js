@@ -1,103 +1,72 @@
-const router  = require('express').Router();
+const router    = require('express').Router();
 const rateLimit = require('express-rate-limit');
-const User    = require('../models/User');
-const { protect }                            = require('../middleware/auth');
-const { generateOTP, hashOTP, sendOTPviaSMS, sendOTPviaWhatsApp } = require('../utils/otp');
+const User      = require('../models/User');
+const { protect }                   = require('../middleware/auth');
+const { generateOTP, hashOTP, sendOTPviaEmail } = require('../utils/otp');
 
-// Rate limit — max 3 OTP requests per phone per 10 minutes
+// Max 3 OTP requests per 10 minutes per user
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, max: 3,
-  message: { error: 'Too many OTP requests. Please wait 10 minutes.' },
-  keyGenerator: req => req.body.phone || req.ip,
+  message: { error: 'Too many requests. Please wait 10 minutes before trying again.' },
+  keyGenerator: req => req.user?._id?.toString() || req.ip,
 });
 
-// POST /api/otp/send — send OTP to user's phone
+// POST /api/otp/send — send verification code to user's email
 router.post('/send', protect, otpLimiter, async (req, res, next) => {
   try {
-    const { channel = 'sms' } = req.body; // 'sms' or 'whatsapp'
     const user = req.user;
 
-    if (!user.phone) {
-      return res.status(400).json({ error: 'No phone number on your account. Please update your profile first.' });
-    }
-    if (user.phoneVerified) {
-      return res.status(400).json({ error: 'Your phone number is already verified.' });
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Your email is already verified.' });
     }
 
     const otp    = generateOTP();
     const hashed = hashOTP(otp);
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
-    // Save hashed OTP and expiry
     await User.findByIdAndUpdate(user._id, {
-      otpHash: hashed,
-      otpExpiry: expiry,
-      otpAttempts: 0,
+      otpHash: hashed, otpExpiry: expiry, otpAttempts: 0,
     });
 
-    // Send via chosen channel
-    if (channel === 'whatsapp') {
-      await sendOTPviaWhatsApp(user.phone, otp);
-    } else {
-      await sendOTPviaSMS(user.phone, otp);
-    }
+    await sendOTPviaEmail(user.email, user.name, otp);
 
     res.json({
-      message: `Verification code sent to ${user.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1****$3')} via ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}.`,
-      expiresIn: 600, // seconds
+      message: `Verification code sent to ${user.email}.`,
+      expiresIn: 600,
     });
-  } catch (err) {
-    // If Termii not configured, return helpful error
-    if (err.message.includes('TERMII_API_KEY')) {
-      return res.status(503).json({ error: 'SMS service not configured. Contact support.' });
-    }
-    next(err);
-  }
+  } catch(err) { next(err); }
 });
 
-// POST /api/otp/verify — verify the OTP
+// POST /api/otp/verify — verify the code
 router.post('/verify', protect, async (req, res, next) => {
   try {
     const { otp } = req.body;
-    if (!otp) return res.status(400).json({ error: 'OTP is required.' });
+    if (!otp) return res.status(400).json({ error: 'Code is required.' });
 
     const user = await User.findById(req.user._id).select('+otpHash +otpExpiry +otpAttempts');
 
-    if (!user.otpHash) {
-      return res.status(400).json({ error: 'No OTP was requested. Please request a new one.' });
-    }
-    if (user.otpExpiry < new Date()) {
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
-    }
-    if (user.otpAttempts >= 5) {
-      return res.status(400).json({ error: 'Too many incorrect attempts. Please request a new OTP.' });
-    }
+    if (!user.otpHash)          return res.status(400).json({ error: 'No code was requested. Please request a new one.' });
+    if (user.otpExpiry < Date.now()) return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
+    if (user.otpAttempts >= 5)  return res.status(400).json({ error: 'Too many incorrect attempts. Request a new code.' });
 
-    const hashed = hashOTP(otp.trim());
-    if (hashed !== user.otpHash) {
+    if (hashOTP(otp.trim()) !== user.otpHash) {
       await User.findByIdAndUpdate(user._id, { $inc: { otpAttempts: 1 } });
-      const remaining = 5 - (user.otpAttempts + 1);
-      return res.status(400).json({ error: `Incorrect code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.` });
+      const left = 5 - (user.otpAttempts + 1);
+      return res.status(400).json({ error: `Incorrect code. ${left} attempt${left !== 1 ? 's' : ''} remaining.` });
     }
 
-    // OTP correct — mark phone as verified, clear OTP
+    // Correct — mark email verified
     const updated = await User.findByIdAndUpdate(user._id, {
-      phoneVerified: true,
-      otpHash: null,
-      otpExpiry: null,
-      otpAttempts: 0,
+      emailVerified: true, otpHash: null, otpExpiry: null, otpAttempts: 0,
     }, { new: true });
 
-    res.json({ message: 'Phone number verified successfully! ✅', user: updated });
-  } catch (err) { next(err); }
+    res.json({ message: 'Email verified successfully! ✅', user: updated });
+  } catch(err) { next(err); }
 });
 
-// GET /api/otp/status — check if phone is verified
+// GET /api/otp/status
 router.get('/status', protect, (req, res) => {
-  res.json({
-    phoneVerified: req.user.phoneVerified || false,
-    phone: req.user.phone || null,
-  });
+  res.json({ emailVerified: req.user.emailVerified || false, email: req.user.email });
 });
 
 module.exports = router;

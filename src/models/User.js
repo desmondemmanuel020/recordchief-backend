@@ -15,8 +15,8 @@ const schema = new mongoose.Schema({
   resetTokenExpiry: { type: Date,   default: null, select: false },
   // Push notifications
   pushSubscription: { type: Object, default: null },
-  // Phone verification
-  phoneVerified:    { type: Boolean, default: false },
+  // Email verification
+  emailVerified:    { type: Boolean, default: false },
   otpHash:          { type: String,  default: null, select: false },
   otpExpiry:        { type: Date,    default: null, select: false },
   otpAttempts:      { type: Number,  default: 0 },

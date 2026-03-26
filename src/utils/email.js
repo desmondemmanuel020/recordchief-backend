@@ -72,4 +72,28 @@ async function sendInvite(email, ownerName, inviteURL) {
   });
 }
 
-module.exports = { sendPasswordReset, sendWelcome, sendInvite };
+
+async function sendOTPEmail(email, name, otp) {
+  const transport = getTransport();
+  await transport.sendMail({
+    from: process.env.EMAIL_FROM || 'Record Chief <no-reply@recordchief.app>',
+    to: email,
+    subject: 'Your Record Chief verification code',
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+        <h2 style="color:#2563EB">📒 Record Chief</h2>
+        <p>Hi ${name},</p>
+        <p>Your email verification code is:</p>
+        <div style="text-align:center;margin:28px 0">
+          <span style="font-size:42px;font-weight:900;font-family:monospace;letter-spacing:12px;color:#1E3A8A;background:#EFF6FF;padding:16px 24px;border-radius:12px">${otp}</span>
+        </div>
+        <p style="color:#64748B;font-size:13px">This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+        <p style="color:#64748B;font-size:13px">If you didn't request this, ignore this email.</p>
+        <hr style="border:none;border-top:1px solid #E2E8F0;margin:20px 0">
+        <p style="color:#94A3B8;font-size:12px">Record Chief · Built for Nigerian businesses</p>
+      </div>
+    `,
+  });
+}
+
+module.exports = { sendPasswordReset, sendWelcome, sendInvite, sendOTPEmail };
