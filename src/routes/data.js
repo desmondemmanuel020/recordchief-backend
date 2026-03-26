@@ -4,20 +4,23 @@ const { protect } = require('../middleware/auth');
 
 router.use(protect);
 
-// GET /api/data — pull all user data
+// GET /api/data — pull all user data (staff gets owner's data)
 router.get('/', async (req, res, next) => {
   try {
-    const data = await UserData.findOne({ userId: req.user._id });
-    res.json({ data: data || null, syncedAt: data?.syncedAt || null });
+    // If staff, fetch owner's data instead
+    const targetId = req.user.businessId || req.user._id;
+    const data = await UserData.findOne({ userId: targetId });
+    res.json({ data: data || null, syncedAt: data?.syncedAt || null, role: req.user.role, businessId: req.user.businessId });
   } catch (err) { next(err); }
 });
 
-// PUT /api/data — full sync (client sends all localStorage data)
+// PUT /api/data — full sync (staff writes to owner's data)
 router.put('/', async (req, res, next) => {
   try {
     const { inventory, shopSales, farmExpenses, salesFields, salesEntries, debtRecords, settings } = req.body;
+    const targetId = req.user.businessId || req.user._id;
     const data = await UserData.findOneAndUpdate(
-      { userId: req.user._id },
+      { userId: targetId },
       {
         $set: {
           ...(inventory    !== undefined && { inventory }),
@@ -43,8 +46,9 @@ router.patch('/:section', async (req, res, next) => {
     const section = req.params.section;
     if (!allowed.includes(section)) return res.status(400).json({ error: 'Invalid section.' });
 
+    const targetId = req.user.businessId || req.user._id;
     const data = await UserData.findOneAndUpdate(
-      { userId: req.user._id },
+      { userId: targetId },
       { $set: { [section]: req.body[section], syncedAt: new Date() } },
       { upsert: true, new: true }
     );

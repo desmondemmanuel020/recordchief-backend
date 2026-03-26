@@ -15,6 +15,15 @@ const schema = new mongoose.Schema({
   resetTokenExpiry: { type: Date,   default: null, select: false },
   // Push notifications
   pushSubscription: { type: Object, default: null },
+  // Phone verification
+  phoneVerified:    { type: Boolean, default: false },
+  otpHash:          { type: String,  default: null, select: false },
+  otpExpiry:        { type: Date,    default: null, select: false },
+  otpAttempts:      { type: Number,  default: 0 },
+
+  // Multi-user: if set, this user is staff linked to an owner's business
+  businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  role:       { type: String, enum: ['owner','staff'], default: 'owner' },
   lastLoginAt: { type: Date, default: null },
 }, { timestamps: true });
 

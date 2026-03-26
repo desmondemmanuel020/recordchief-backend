@@ -37,12 +37,16 @@ app.get('/health', (_, res) => res.status(200).json({ status: 'ok', time: new Da
 
 // ── Routes ────────────────────────────────────
 try {
-  const authRoutes = require('./routes/auth');
-  const dataRoutes = require('./routes/data');
-  const pushRoutes = require('./routes/push');
-  app.use('/api/auth', authLimiter, authRoutes);
-  app.use('/api/data', dataRoutes);
-  app.use('/api/push', pushRoutes);
+  const authRoutes   = require('./routes/auth');
+  const dataRoutes   = require('./routes/data');
+  const pushRoutes   = require('./routes/push');
+  const inviteRoutes = require('./routes/invite');
+  const otpRoutes    = require('./routes/otp');
+  app.use('/api/auth',   authLimiter, authRoutes);
+  app.use('/api/data',   dataRoutes);
+  app.use('/api/push',   pushRoutes);
+  app.use('/api/invite', inviteRoutes);
+  app.use('/api/otp',    otpRoutes);
 } catch(e) {
   console.error('Route load error:', e.message);
 }
