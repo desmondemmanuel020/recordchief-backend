@@ -109,4 +109,32 @@ router.patch('/change-password', protect, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// DELETE /api/auth/account — delete account (requires email confirmation)
+router.delete('/account', protect, async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email confirmation required.' });
+    if (email.toLowerCase() !== req.user.email.toLowerCase()) {
+      return res.status(400).json({ error: 'Email does not match your account.' });
+    }
+
+    const uid = req.user._id;
+    const UserData = require('../models/Data');
+    const Invite   = require('../models/Invite');
+
+    // Delete all user data
+    await Promise.all([
+      UserData.deleteOne({ userId: uid }),
+      Invite.deleteMany({ ownerId: uid }),
+      Invite.updateMany({ staffId: uid }, { staffId: null, status: 'revoked' }),
+      // Unlink any staff accounts pointing to this owner
+      require('../models/User').updateMany({ businessId: uid }, { businessId: null, role: 'owner' }),
+      require('../models/User').findByIdAndDelete(uid),
+    ]);
+
+    res.json({ message: 'Account deleted successfully.' });
+  } catch(err) { next(err); }
+});
+
 module.exports = router;
